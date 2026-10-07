@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/参考
+/.trae/documents
+/EXPasteWPF.Tests/ConfigServiceTests.cs
+/EXPasteWPF.Tests/PasteLogicTests.cs
