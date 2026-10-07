@@ -15,6 +15,16 @@ namespace EXPasteWPF.ViewModels
         private string _compilerHotkeyText = "";
         private string _pauseResumeHotkeyText = "";
         private int _countdownSeconds = 3;
+        private int _pasteSpeedMs = 50;
+        private string _compilerQuickMode = "头歌";
+        private bool _tougeFullControl = true;
+        private bool _tougeSymbolDetect = true;
+        private bool _vsFullControl;
+        private bool _vsSymbolDetect;
+        private bool _customFullControl;
+        private bool _customSymbolDetect;
+        private string _fullControlLabel = "全控制缩进检测（头歌）";
+        private string _symbolDetectLabel = "左右符号对称检测（头歌）";
         private bool _settingsDirty;
 
         public bool EnableHotkey
@@ -51,6 +61,66 @@ namespace EXPasteWPF.ViewModels
         {
             get => _countdownSeconds;
             set { _countdownSeconds = value; OnPropertyChanged(); }
+        }
+
+        public int PasteSpeedMs
+        {
+            get => _pasteSpeedMs;
+            set { _pasteSpeedMs = value; OnPropertyChanged(); }
+        }
+
+        public string CompilerQuickMode
+        {
+            get => _compilerQuickMode;
+            set { _compilerQuickMode = value; OnPropertyChanged(); }
+        }
+
+        public bool TougeFullControl
+        {
+            get => _tougeFullControl;
+            set { _tougeFullControl = value; OnPropertyChanged(); }
+        }
+
+        public bool TougeSymbolDetect
+        {
+            get => _tougeSymbolDetect;
+            set { _tougeSymbolDetect = value; OnPropertyChanged(); }
+        }
+
+        public bool VsFullControl
+        {
+            get => _vsFullControl;
+            set { _vsFullControl = value; OnPropertyChanged(); }
+        }
+
+        public bool VsSymbolDetect
+        {
+            get => _vsSymbolDetect;
+            set { _vsSymbolDetect = value; OnPropertyChanged(); }
+        }
+
+        public bool CustomFullControl
+        {
+            get => _customFullControl;
+            set { _customFullControl = value; OnPropertyChanged(); }
+        }
+
+        public bool CustomSymbolDetect
+        {
+            get => _customSymbolDetect;
+            set { _customSymbolDetect = value; OnPropertyChanged(); }
+        }
+
+        public string FullControlLabel
+        {
+            get => _fullControlLabel;
+            set { _fullControlLabel = value; OnPropertyChanged(); }
+        }
+
+        public string SymbolDetectLabel
+        {
+            get => _symbolDetectLabel;
+            set { _symbolDetectLabel = value; OnPropertyChanged(); }
         }
 
         public bool SettingsDirty

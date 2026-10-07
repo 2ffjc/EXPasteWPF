@@ -70,6 +70,30 @@ namespace EXPasteWPF.Services
                     case "CountdownSeconds":
                         if (int.TryParse(value, out int cd)) cfg.CountdownSeconds = Math.Clamp(cd, 1, 60);
                         break;
+                    case "PasteSpeedMs":
+                        if (int.TryParse(value, out int ps)) cfg.PasteSpeedMs = Math.Clamp(ps, 20, 500);
+                        break;
+                    case "CompilerQuickMode":
+                        cfg.CompilerQuickMode = (value == "VSCode" || value == "自定义") ? value : "头歌";
+                        break;
+                    case "TougeFullControl":
+                        cfg.TougeFullControl = value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1";
+                        break;
+                    case "TougeSymbolDetect":
+                        cfg.TougeSymbolDetect = value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1";
+                        break;
+                    case "VsFullControl":
+                        cfg.VsFullControl = value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1";
+                        break;
+                    case "VsSymbolDetect":
+                        cfg.VsSymbolDetect = value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1";
+                        break;
+                    case "CustomFullControl":
+                        cfg.CustomFullControl = value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1";
+                        break;
+                    case "CustomSymbolDetect":
+                        cfg.CustomSymbolDetect = value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1";
+                        break;
                 }
             }
             return cfg;
@@ -89,6 +113,14 @@ namespace EXPasteWPF.Services
             sb.AppendLine($"CompilerHotkey={cfg.CompilerHotkey ?? ""}");
             sb.AppendLine($"PauseResumeHotkey={cfg.PauseResumeHotkey ?? ""}");
             sb.AppendLine($"CountdownSeconds={cfg.CountdownSeconds}");
+            sb.AppendLine($"PasteSpeedMs={cfg.PasteSpeedMs}");
+            sb.AppendLine($"CompilerQuickMode={cfg.CompilerQuickMode}");
+            sb.AppendLine($"TougeFullControl={(cfg.TougeFullControl ? "true" : "false")}");
+            sb.AppendLine($"TougeSymbolDetect={(cfg.TougeSymbolDetect ? "true" : "false")}");
+            sb.AppendLine($"VsFullControl={(cfg.VsFullControl ? "true" : "false")}");
+            sb.AppendLine($"VsSymbolDetect={(cfg.VsSymbolDetect ? "true" : "false")}");
+            sb.AppendLine($"CustomFullControl={(cfg.CustomFullControl ? "true" : "false")}");
+            sb.AppendLine($"CustomSymbolDetect={(cfg.CustomSymbolDetect ? "true" : "false")}");
 
             File.WriteAllText(_configPath, sb.ToString(), Encoding.UTF8);
         }
@@ -134,5 +166,13 @@ namespace EXPasteWPF.Services
         public string? CompilerHotkey { get; set; } = "";
         public string? PauseResumeHotkey { get; set; } = "";
         public int CountdownSeconds { get; set; } = 3;
+        public int PasteSpeedMs { get; set; } = 50;
+        public string CompilerQuickMode { get; set; } = "头歌";
+        public bool TougeFullControl { get; set; } = true;
+        public bool TougeSymbolDetect { get; set; } = true;
+        public bool VsFullControl { get; set; } = false;
+        public bool VsSymbolDetect { get; set; } = false;
+        public bool CustomFullControl { get; set; } = false;
+        public bool CustomSymbolDetect { get; set; } = false;
     }
 }

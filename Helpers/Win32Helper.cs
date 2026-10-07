@@ -83,6 +83,11 @@ namespace EXPasteWPF.Helpers
         public const uint KEYEVENTF_KEYUP = 0x0002;
         public const ushort VK_RETURN = 0x0D;
         public const ushort VK_TAB = 0x09;
+        public const ushort VK_HOME = 0x24;
+        public const ushort VK_END = 0x23;
+        public const ushort VK_LEFT = 0x25;
+        public const ushort VK_RIGHT = 0x27;
+        public const ushort VK_DELETE = 0x2E;
 
         /// <summary>
         /// 发送单个 Unicode 字符（按下+抬起）
@@ -130,6 +135,38 @@ namespace EXPasteWPF.Helpers
                 var ex = new Win32Exception(lastError);
                 throw new InvalidOperationException($"SendInput failed: expected={inputs.Length}, sent={sent}, cbSize={cbSize}, lastError={lastError}, message={ex.Message}", ex);
             }
+        }
+
+        #endregion
+
+        #region 显示器信息（用于多显示器 / 高 DPI 下的最大化区域计算）
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        public const uint MONITOR_DEFAULTTONULL = 0x00000000;
+        public const uint MONITOR_DEFAULTTOPRIMARY = 0x00000001;
+        public const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int left;
+            public int top;
+            public int right;
+            public int bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        public struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
         }
 
         #endregion

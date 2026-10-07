@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using EXPasteWPF.Helpers;
 using EXPasteWPF.Services;
 using EXPasteWPF.ViewModels;
@@ -36,6 +37,13 @@ namespace EXPasteWPF
         private int _pasteCurrentLine;
         private int _pasteTotalLines;
         private bool _loadingConfig;
+
+        // 编译器模式粘贴专用（全控制缩进 / 符号对称）
+        private bool _compilerFullControl;
+        private bool _compilerSymbolDetect;
+        private int[]? _lineIndents;
+        private int _compilerPasteLine;
+        private bool _pendingLineStartRitual;
 
         // 快捷键捕获模式
         private bool _isCapturing;
@@ -72,6 +80,7 @@ namespace EXPasteWPF
             LoadConfig();
         }
 
+
         private void MainWindow_Closed(object? sender, EventArgs e)
         {
             StopPaste();
@@ -105,10 +114,21 @@ namespace EXPasteWPF
                 ViewModel.CompilerHotkeyText = FormatGesture(ViewModel.CompilerHotkey);
                 ViewModel.PauseResumeHotkeyText = FormatGesture(ViewModel.PauseResumeHotkey);
                 ViewModel.CountdownSeconds = Math.Clamp(cfg.CountdownSeconds, 1, 60);
+                ViewModel.PasteSpeedMs = Math.Clamp(cfg.PasteSpeedMs, 20, 500);
+                ViewModel.CompilerQuickMode = cfg.CompilerQuickMode;
+                ViewModel.TougeFullControl = cfg.TougeFullControl;
+                ViewModel.TougeSymbolDetect = cfg.TougeSymbolDetect;
+                ViewModel.VsFullControl = cfg.VsFullControl;
+                ViewModel.VsSymbolDetect = cfg.VsSymbolDetect;
+                ViewModel.CustomFullControl = cfg.CustomFullControl;
+                ViewModel.CustomSymbolDetect = cfg.CustomSymbolDetect;
 
                 EnableHotkeyCheckBox.IsChecked = cfg.EnableHotkey;
                 CountdownSlider.Value = ViewModel.CountdownSeconds;
                 CountdownValueText.Text = $"{ViewModel.CountdownSeconds} 秒";
+                PasteSpeedSlider.Value = ViewModel.PasteSpeedMs;
+                PasteSpeedValueText.Text = $"{ViewModel.PasteSpeedMs} ms";
+                ApplyCompilerModeUI();
                 UpdateHotkeyDisplays();
                 ClearSettingsDirty();
 
@@ -136,7 +156,15 @@ namespace EXPasteWPF
                 TextEditHotkey = FormatGesture(ViewModel.TextEditHotkey),
                 CompilerHotkey = FormatGesture(ViewModel.CompilerHotkey),
                 PauseResumeHotkey = FormatGesture(ViewModel.PauseResumeHotkey),
-                CountdownSeconds = Math.Clamp(ViewModel.CountdownSeconds, 1, 60)
+                CountdownSeconds = Math.Clamp(ViewModel.CountdownSeconds, 1, 60),
+                PasteSpeedMs = Math.Clamp(ViewModel.PasteSpeedMs, 20, 500),
+                CompilerQuickMode = ViewModel.CompilerQuickMode,
+                TougeFullControl = ViewModel.TougeFullControl,
+                TougeSymbolDetect = ViewModel.TougeSymbolDetect,
+                VsFullControl = ViewModel.VsFullControl,
+                VsSymbolDetect = ViewModel.VsSymbolDetect,
+                CustomFullControl = ViewModel.CustomFullControl,
+                CustomSymbolDetect = ViewModel.CustomSymbolDetect
             };
             _configService.Save(cfg);
         }
@@ -163,6 +191,7 @@ namespace EXPasteWPF
         {
             SaveConfig();
             ViewModel.CountdownSeconds = (int)Math.Round(CountdownSlider.Value);
+            ViewModel.PasteSpeedMs = Math.Clamp((int)Math.Round(PasteSpeedSlider.Value), 20, 500);
             ClearSettingsDirty();
             if (ViewModel.EnableHotkey)
             {
@@ -184,6 +213,167 @@ namespace EXPasteWPF
             CountdownValueText.Text = $"{seconds} 秒";
             MarkSettingsDirty();
         }
+
+        private void PasteSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (sender is not Slider slider || PasteSpeedValueText == null) return;
+
+            int ms = (int)Math.Round(slider.Value);
+            ms = Math.Clamp(ms, 20, 500);
+            ViewModel.PasteSpeedMs = ms;
+            PasteSpeedValueText.Text = $"{ms} ms";
+            MarkSettingsDirty();
+        }
+
+        /// <summary>
+        /// 按当前 CompilerQuickMode 更新 UI：下拉文字、两个开关标签文字、开关状态
+        /// </summary>
+        private void ApplyCompilerModeUI()
+        {
+            string mode = ViewModel.CompilerQuickMode;
+            string displayText, fcLabel, sdLabel;
+            bool fcOn, sdOn;
+
+            switch (mode)
+            {
+                case "VSCode":
+                    displayText = "VSCode";
+                    fcLabel = "全控制缩进检测（vs）";
+                    sdLabel = "左右符号对称检测（vs）";
+                    fcOn = ViewModel.VsFullControl;
+                    sdOn = ViewModel.VsSymbolDetect;
+                    break;
+                case "自定义":
+                    displayText = "自定义编辑器模式";
+                    fcLabel = "全控制缩进检测（自定义）";
+                    sdLabel = "左右符号对称检测（自定义）";
+                    fcOn = ViewModel.CustomFullControl;
+                    sdOn = ViewModel.CustomSymbolDetect;
+                    break;
+                default: // 头歌
+                    displayText = "头歌模式";
+                    fcLabel = "全控制缩进检测（头歌）";
+                    sdLabel = "左右符号对称检测（头歌）";
+                    fcOn = ViewModel.TougeFullControl;
+                    sdOn = ViewModel.TougeSymbolDetect;
+                    break;
+            }
+
+            QuickModeText.Text = displayText;
+            ViewModel.FullControlLabel = fcLabel;
+            ViewModel.SymbolDetectLabel = sdLabel;
+
+            _loadingConfig = true; // 防止 Toggle 切换时误触发 MarkSettingsDirty
+            FullControlIndentToggle.IsChecked = fcOn;
+            SymbolSymmetryToggle.IsChecked = sdOn;
+            _loadingConfig = false;
+        }
+
+        /// <summary>
+        /// 把当前 UI 上两个开关的状态写回 ViewModel 对应模式字段
+        /// </summary>
+        private void WriteToggleToViewModel()
+        {
+            bool fc = FullControlIndentToggle.IsChecked == true;
+            bool sd = SymbolSymmetryToggle.IsChecked == true;
+            switch (ViewModel.CompilerQuickMode)
+            {
+                case "VSCode":
+                    ViewModel.VsFullControl = fc;
+                    ViewModel.VsSymbolDetect = sd;
+                    break;
+                case "自定义":
+                    ViewModel.CustomFullControl = fc;
+                    ViewModel.CustomSymbolDetect = sd;
+                    break;
+                default:
+                    ViewModel.TougeFullControl = fc;
+                    ViewModel.TougeSymbolDetect = sd;
+                    break;
+            }
+        }
+
+        private void FullControlIndentToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_loadingConfig || FullControlIndentToggle == null) return;
+            WriteToggleToViewModel();
+            MarkSettingsDirty();
+        }
+
+        private void SymbolSymmetryToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_loadingConfig || SymbolSymmetryToggle == null) return;
+            WriteToggleToViewModel();
+            MarkSettingsDirty();
+        }
+
+        #region 快速选择模式抽屉
+
+        private bool _drawerOpen;
+
+        private void QuickModeDropdownBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_drawerOpen) CloseQuickModeDrawer();
+            else OpenQuickModeDrawer();
+        }
+
+        private void OpenQuickModeDrawer()
+        {
+            QuickModeDrawerPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double targetHeight = QuickModeDrawerPanel.DesiredSize.Height + 8;
+            _drawerOpen = true;
+
+            var anim = new System.Windows.Media.Animation.DoubleAnimation
+            {
+                From = 0,
+                To = targetHeight,
+                Duration = TimeSpan.FromMilliseconds(180)
+            };
+            anim.Completed += (s, _) => { if (_drawerOpen) QuickModeDrawer.Height = targetHeight; };
+            QuickModeDrawer.BeginAnimation(HeightProperty, anim);
+        }
+
+        private void CloseQuickModeDrawer()
+        {
+            _drawerOpen = false;
+            var anim = new System.Windows.Media.Animation.DoubleAnimation
+            {
+                From = QuickModeDrawer.ActualHeight,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(150)
+            };
+            anim.Completed += (s, _) => { if (!_drawerOpen) QuickModeDrawer.Height = 0; };
+            QuickModeDrawer.BeginAnimation(HeightProperty, anim);
+        }
+
+        private void QuickModeItem_Touge_Click(object sender, RoutedEventArgs e)
+        {
+            WriteToggleToViewModel(); // 先保存当前模式开关
+            ViewModel.CompilerQuickMode = "头歌";
+            ApplyCompilerModeUI();
+            MarkSettingsDirty();
+            CloseQuickModeDrawer();
+        }
+
+        private void QuickModeItem_VSCode_Click(object sender, RoutedEventArgs e)
+        {
+            WriteToggleToViewModel();
+            ViewModel.CompilerQuickMode = "VSCode";
+            ApplyCompilerModeUI();
+            MarkSettingsDirty();
+            CloseQuickModeDrawer();
+        }
+
+        private void QuickModeItem_Custom_Click(object sender, RoutedEventArgs e)
+        {
+            WriteToggleToViewModel();
+            ViewModel.CompilerQuickMode = "自定义";
+            ApplyCompilerModeUI();
+            MarkSettingsDirty();
+            CloseQuickModeDrawer();
+        }
+
+        #endregion
 
         internal static string FormatGesture(KeyGesture? gesture)
         {
@@ -524,7 +714,65 @@ namespace EXPasteWPF
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 为「全控制缩进」准备编译器内容：保留每行缩进级数（Tab=4 空格），
+        /// 同时剥除每行前导空白，返回 (剥除后内容, 每行缩进空格数)。
+        /// fullControl=false 时退化为旧 StripLeadingTabs 行为，indents 为 null。
+        /// </summary>
+        internal static (string Content, int[]? Indents) PrepareCompilerContent(string raw, bool fullControl)
+        {
+            if (!fullControl) return (StripLeadingTabs(raw), null);
+
+            var lines = raw.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            var indents = new int[lines.Length];
+            var sb = new StringBuilder();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                int j = 0;
+                int indent = 0;
+                while (j < line.Length)
+                {
+                    char ch = line[j];
+                    if (ch == '\t') { indent += 4; j++; }
+                    else if (ch == ' ') { indent += 1; j++; }
+                    else break;
+                }
+                indents[i] = indent;
+                sb.Append(line.Substring(j));
+                if (i < lines.Length - 1) sb.Append('\n');
+            }
+            return (sb.ToString(), indents);
+        }
+
+        /// <summary>
+        /// 判定一个字符是否为「左半」配对符号（触发方法 B：输入后按 DEL 删掉自动配对的右半）。
+        /// 覆盖半角括号/方括号/花括号/尖括号/引号，以及全角对应符号。
+        /// </summary>
+        internal static bool IsLeftPairSymbol(char c)
+        {
+            switch (c)
+            {
+                case '(':
+                case '[':
+                case '{':
+                case '<':
+                case '"':
+                case '\'':
+                case '（':   // 全角左圆括号
+                case '［':   // 全角左方括号
+                case '｛':   // 全角左花括号
+                case '＜':   // 全角左尖括号
+                case '“':   // 中文左双引号
+                case '‘':   // 中文左单引号
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         #endregion
+
 
         #region 关于：GitHub 链接
 
@@ -959,19 +1207,27 @@ namespace EXPasteWPF
             }
             else if (msg == WM_GETMINMAXINFO)
             {
-                // 最大化时约束到工作区，避免覆盖任务栏；同时设置最小缩放尺寸，防止缩太小
-                var workArea = SystemParameters.WorkArea;
                 var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
-                mmi.MaxSizeWidth = (int)workArea.Width;
-                mmi.MaxSizeHeight = (int)workArea.Height;
-                mmi.MaxPositionX = (int)workArea.X;
-                mmi.MaxPositionY = (int)workArea.Y;
-                // 最小缩放尺寸（与 XAML 中 MinWidth/MinHeight 保持一致）
-                mmi.MinTrackWidth = (int)MinWidth;
-                mmi.MinTrackHeight = (int)MinHeight;
-                // 最大缩放尺寸不超过工作区
-                mmi.MaxTrackWidth = (int)workArea.Width;
-                mmi.MaxTrackHeight = (int)workArea.Height;
+
+                // 取窗口当前所在显示器的工作区（物理像素），正确支持多显示器 / 高 DPI 最大化
+                IntPtr hMon = Win32Helper.MonitorFromWindow(_windowHandle, Win32Helper.MONITOR_DEFAULTTONEAREST);
+                var info = new Win32Helper.MONITORINFO { cbSize = Marshal.SizeOf<Win32Helper.MONITORINFO>() };
+                if (hMon != IntPtr.Zero && Win32Helper.GetMonitorInfo(hMon, ref info))
+                {
+                    var work = info.rcWork;
+                    mmi.MaxPositionX = work.left;
+                    mmi.MaxPositionY = work.top;
+                    mmi.MaxSizeWidth = work.right - work.left;
+                    mmi.MaxSizeHeight = work.bottom - work.top;
+                    mmi.MaxTrackWidth = info.rcMonitor.right - info.rcMonitor.left;
+                    mmi.MaxTrackHeight = info.rcMonitor.bottom - info.rcMonitor.top;
+                }
+
+                // 最小缩放尺寸：MinWidth/MinHeight 是 DIP，MINMAXINFO 要物理像素，按当前 DPI 换算
+                double dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+                mmi.MinTrackWidth = (int)Math.Ceiling(MinWidth * dpiScale);
+                mmi.MinTrackHeight = (int)Math.Ceiling(MinHeight * dpiScale);
+
                 Marshal.StructureToPtr(mmi, lParam, true);
                 handled = true;
             }
@@ -1029,6 +1285,7 @@ namespace EXPasteWPF
                         }
                     }
 
+                    ResetCompilerPasteState();
                     StartPaste(sb.ToString());
                     break;
 
@@ -1040,6 +1297,7 @@ namespace EXPasteWPF
                             MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
+                    ResetCompilerPasteState();
                     StartPaste(teContent);
                     break;
 
@@ -1051,10 +1309,141 @@ namespace EXPasteWPF
                             MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
-                    StartPaste(StripLeadingTabs(cmpContent));
+                    // 按当前选中的快速模式分发到对应逻辑
+                    switch (ViewModel.CompilerQuickMode)
+                    {
+                        case "VSCode":
+                            vs_PreparePaste(cmpContent);
+                            break;
+                        case "自定义":
+                            custom_PreparePaste(cmpContent);
+                            break;
+                        default: // 头歌
+                            touge_PreparePaste(cmpContent);
+                            break;
+                    }
+                    StartPaste(_compilerPreparedContent!);
                     break;
             }
         }
+
+        /// <summary>
+        /// 非编译器模式粘贴前清零编译器专用状态，避免误触发缩进/符号逻辑
+        /// </summary>
+        private void ResetCompilerPasteState()
+        {
+            _compilerFullControl = false;
+            _compilerSymbolDetect = false;
+            _lineIndents = null;
+            _compilerPasteLine = 0;
+            _pendingLineStartRitual = false;
+            _compilerActiveMode = "";
+            _compilerPreparedContent = null;
+        }
+
+        #endregion
+
+        #region 头歌模式（touge_）粘贴逻辑
+
+        // 编译器模式当前活动子模式（"头歌"/"VSCode"/"自定义"），供 TypeContentAsync 分发
+        private string _compilerActiveMode = "";
+        // 准备好的最终粘贴内容（各模式 PreparePaste 写入）
+        private string? _compilerPreparedContent;
+
+        private void touge_PreparePaste(string rawContent)
+        {
+            bool full = ViewModel.TougeFullControl;
+            bool symbol = ViewModel.TougeSymbolDetect;
+            var (content, indents) = PrepareCompilerContent(rawContent, full);
+            _compilerActiveMode = "头歌";
+            _compilerFullControl = full;
+            _compilerSymbolDetect = symbol;
+            _lineIndents = indents;
+            _compilerPasteLine = 0;
+            _pendingLineStartRitual = full;
+            _compilerPreparedContent = content;
+        }
+
+        /// <summary>
+        /// 头歌模式行首仪式：Home 跳行首 + 补空格缩进
+        /// </summary>
+        private async Task touge_LineStartRitual(int speedMs, CancellationToken token)
+        {
+            Win32Helper.SendKey(Win32Helper.VK_HOME);
+            await Task.Delay(speedMs, token);
+            int indent = _lineIndents![_compilerPasteLine];
+            for (int s = 0; s < indent; s++)
+            {
+                Win32Helper.SendUnicodeChar(' ');
+                await Task.Delay(speedMs, token);
+            }
+        }
+
+        /// <summary>
+        /// 头歌模式符号对称检测：左半符号后按 DEL 删掉自动配对的右半
+        /// </summary>
+        private async Task touge_SymbolDetect(char c, int speedMs, CancellationToken token)
+        {
+            await Task.Delay(speedMs, token);
+            Win32Helper.SendKey(Win32Helper.VK_DELETE);
+        }
+
+        #endregion
+
+        #region VSCode 模式（vs_）粘贴逻辑
+
+        private void vs_PreparePaste(string rawContent)
+        {
+            // VSCode 模式：暂用最基础的逐字粘贴（StripLeadingTabs），用户后续再改
+            _compilerActiveMode = "VSCode";
+            _compilerFullControl = ViewModel.VsFullControl;
+            _compilerSymbolDetect = ViewModel.VsSymbolDetect;
+            _lineIndents = null;
+            _compilerPasteLine = 0;
+            _pendingLineStartRitual = false;
+            _compilerPreparedContent = StripLeadingTabs(rawContent);
+        }
+
+        private async Task vs_LineStartRitual(int speedMs, CancellationToken token)
+        {
+            // TODO: 用户后续定义 VSCode 模式缩进逻辑
+            await Task.CompletedTask;
+        }
+
+        private async Task vs_SymbolDetect(char c, int speedMs, CancellationToken token)
+        {
+            // TODO: 用户后续定义 VSCode 模式符号逻辑
+            await Task.CompletedTask;
+        }
+
+        #endregion
+
+        #region 自定义模式（custom_）粘贴逻辑
+
+        private void custom_PreparePaste(string rawContent)
+        {
+            // 自定义模式：暂用最基础的逐字粘贴，用户后续再改
+            _compilerActiveMode = "自定义";
+            _compilerFullControl = ViewModel.CustomFullControl;
+            _compilerSymbolDetect = ViewModel.CustomSymbolDetect;
+            _lineIndents = null;
+            _compilerPasteLine = 0;
+            _pendingLineStartRitual = false;
+            _compilerPreparedContent = StripLeadingTabs(rawContent);
+        }
+
+        private async Task custom_LineStartRitual(int speedMs, CancellationToken token)
+        {
+            // TODO: 用户后续定义自定义模式缩进逻辑
+            await Task.CompletedTask;
+        }
+
+        private async Task custom_SymbolDetect(char c, int speedMs, CancellationToken token)
+        {
+            // TODO: 用户后续定义自定义模式符号逻辑
+            await Task.CompletedTask;
+        }
+
 
         #endregion
 
@@ -1068,75 +1457,13 @@ namespace EXPasteWPF
         #region 核心粘贴逻辑：模拟键盘自动输入
 
         private void FileStartPasteBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_isPasting)
-            {
-                TogglePauseResumePaste();
-                return;
-            }
-
-            var paths = PathTextBox.Text.Split(new[] { ';', '\r', '\n' },
-                StringSplitOptions.RemoveEmptyEntries)
-                .Select(p => p.Trim())
-                .Where(p => File.Exists(p))
-                .ToList();
-
-            if (paths.Count == 0)
-            {
-                MessageBox.Show("请先拖放或选择有效的文件", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var sb = new StringBuilder();
-            foreach (var path in paths)
-            {
-                try
-                {
-                    sb.Append(File.ReadAllText(path, Encoding.UTF8));
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"读取文件失败：{path}\n{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-            }
-
-            StartPaste(sb.ToString());
-        }
+            => HandleStartPauseResumeHotkey();
 
         private void TextEditStartPasteBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_isPasting)
-            {
-                TogglePauseResumePaste();
-                return;
-            }
-
-            string content = TextEditBox.Text;
-            if (string.IsNullOrEmpty(content))
-            {
-                MessageBox.Show("请先输入要粘贴的文本内容", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            StartPaste(content);
-        }
+            => HandleStartPauseResumeHotkey();
 
         private void CompilerStartPasteBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_isPasting)
-            {
-                TogglePauseResumePaste();
-                return;
-            }
-
-            string content = CompilerTextBox.Text;
-            if (string.IsNullOrEmpty(content))
-            {
-                MessageBox.Show("请先输入要粘贴的代码内容", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            StartPaste(StripLeadingTabs(content));
-        }
+            => HandleStartPauseResumeHotkey();
 
         private void StopPasteBtn_Click(object sender, RoutedEventArgs e) => StopPaste();
 
@@ -1197,6 +1524,7 @@ namespace EXPasteWPF
                 _pasteResumeSignal = null;
                 _pasteCts?.Dispose();
                 _pasteCts = null;
+                ResetCompilerPasteState();
                 SetCountdownText("");
                 SetPasteButtonsForIdle();
             }
@@ -1316,6 +1644,11 @@ namespace EXPasteWPF
         private async Task TypeContentAsync(CancellationToken token)
         {
             string content = _pasteContent ?? string.Empty;
+            int speedMs = Math.Clamp(ViewModel.PasteSpeedMs, 20, 500);
+
+            // 非编译器模式或编译器模式但未激活任何子模式时，走基础逐字粘贴
+            bool isCompilerMode = !string.IsNullOrEmpty(_compilerActiveMode);
+
             while (_pastePosition < content.Length)
             {
                 await WaitIfPausedAsync(token);
@@ -1324,20 +1657,21 @@ namespace EXPasteWPF
 
                 char c = content[_pastePosition];
 
-                if (c == '\r')
+                if (c == '\r' || c == '\n')
                 {
                     Win32Helper.SendKey(Win32Helper.VK_RETURN);
-                    if (_pastePosition + 1 < content.Length && content[_pastePosition + 1] == '\n')
+                    if (c == '\r' && _pastePosition + 1 < content.Length && content[_pastePosition + 1] == '\n')
                         _pastePosition += 2;
                     else
                         _pastePosition++;
                     AdvancePasteLine();
-                }
-                else if (c == '\n')
-                {
-                    Win32Helper.SendKey(Win32Helper.VK_RETURN);
-                    _pastePosition++;
-                    AdvancePasteLine();
+
+                    // 编译器模式换行后：递进行号 + 标记待执行行首仪式
+                    if (isCompilerMode && _compilerFullControl)
+                    {
+                        _compilerPasteLine = Math.Min(_compilerPasteLine + 1, (_lineIndents?.Length ?? 1) - 1);
+                        _pendingLineStartRitual = true;
+                    }
                 }
                 else if (c == '\t')
                 {
@@ -1346,11 +1680,46 @@ namespace EXPasteWPF
                 }
                 else
                 {
+                    // 行首仪式：按当前子模式分发
+                    if (_pendingLineStartRitual && _compilerFullControl && _lineIndents != null)
+                    {
+                        _pendingLineStartRitual = false;
+                        switch (_compilerActiveMode)
+                        {
+                            case "VSCode":
+                                await vs_LineStartRitual(speedMs, token);
+                                break;
+                            case "自定义":
+                                await custom_LineStartRitual(speedMs, token);
+                                break;
+                            default:
+                                await touge_LineStartRitual(speedMs, token);
+                                break;
+                        }
+                    }
+
                     Win32Helper.SendUnicodeChar(c);
                     _pastePosition++;
+
+                    // 符号对称检测：按当前子模式分发
+                    if (_compilerSymbolDetect && IsLeftPairSymbol(c))
+                    {
+                        switch (_compilerActiveMode)
+                        {
+                            case "VSCode":
+                                await vs_SymbolDetect(c, speedMs, token);
+                                break;
+                            case "自定义":
+                                await custom_SymbolDetect(c, speedMs, token);
+                                break;
+                            default:
+                                await touge_SymbolDetect(c, speedMs, token);
+                                break;
+                        }
+                    }
                 }
 
-                await Task.Delay(50, token);
+                await Task.Delay(speedMs, token);
             }
         }
 

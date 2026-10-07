@@ -8,9 +8,9 @@
         mc:Ignorable="d"
         Title="EXPaste" Height="600" Width="800" WindowStartupLocation="CenterScreen" AllowsTransparency="True"
         Background="Transparent" WindowStyle="None" ResizeMode="CanResize"
-        MinWidth="580" MinHeight="440">
+        MinWidth="600" MinHeight="420">
 
-    <Grid>
+    <Grid x:Name="RootContentGrid">
         <!--背景 Grid-->
         <Grid>
             <Grid.ColumnDefinitions>
@@ -67,7 +67,8 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!--主菜单（Grid 布局：顶部 logo+模式按钮，中间自适应间隔，底部 设置+关于）-->
+            <!--主菜单（外层 ScrollViewer 保证窗口过矮时菜单项可滚动，不被裁切）-->
+            <ScrollViewer Width="240" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <Grid Width="240">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -135,9 +136,10 @@
                             <fa:ImageAwesome Icon="AngleRight" HorizontalAlignment="Right" Margin="-14" Visibility="Visible" Style="{StaticResource buttonIconExpanded}"/>
                         </Grid>
                     </Button>
-                    <Separator Background="Gray" Opacity="0" Margin="0,0,0,0" Height="6" Width="146"/>
+                    <Separator Background="Gray" Opacity="0" Margin="0,0,0,0" Height="6" Width="46"/>
                 </StackPanel>
             </Grid>
+            </ScrollViewer>
 
             <!--内容区-->
             <Grid Grid.Column="1" Grid.ColumnSpan="2" Margin="3,3,3,3">
@@ -309,9 +311,91 @@
                                            VerticalAlignment="Center" Margin="10,0,0,0"/>
                             </StackPanel>
 
+                            <!--粘贴速度-->
+                            <TextBlock Text="粘贴速度（ms/字）" Style="{StaticResource settingsLabel}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                                <Slider x:Name="PasteSpeedSlider" Width="200" Minimum="20" Maximum="500"
+                                        Value="50" IsSnapToTickEnabled="True" TickFrequency="10"
+                                        ValueChanged="PasteSpeedSlider_ValueChanged">
+                                    <Slider.ToolTip>
+                                        <ToolTip Background="Transparent" BorderThickness="0" Padding="0">
+                                            <Border Background="#A59CC4" CornerRadius="6" Padding="8,6">
+                                                <TextBlock Text="20 ~ 500 ms/字" Foreground="Black" FontSize="13"/>
+                                            </Border>
+                                        </ToolTip>
+                                    </Slider.ToolTip>
+                                </Slider>
+                                <TextBlock x:Name="PasteSpeedValueText" Text="50 ms"
+                                           Foreground="#E0E0E0" FontSize="13"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <!-- ========== 编译器模式专用设置 ========== -->
+                            <TextBlock Text="编译器模式" Style="{StaticResource settingsLabel}"
+                                       FontSize="14" Margin="0,16,0,4"/>
+                            <Border Background="#4B4466" CornerRadius="8" Padding="12" Margin="0,4,0,0">
+                                <StackPanel>
+                                    <!--快速选择模式 下拉抽屉-->
+                                    <TextBlock Text="快速选择模式" Style="{StaticResource settingsLabel}" Margin="0,0,0,4"/>
+                                    <Button x:Name="QuickModeDropdownBtn" Style="{StaticResource quickModeDropdownBtn}"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                            Click="QuickModeDropdownBtn_Click">
+                                        <DockPanel LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Text="▾" FontSize="10" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                            <TextBlock x:Name="QuickModeText" Text="头歌模式" Foreground="#E0E0E0" FontSize="13" VerticalAlignment="Center"/>
+                                        </DockPanel>
+                                    </Button>
+                                    <Border x:Name="QuickModeDrawer" ClipToBounds="True" Height="0" Background="#2e2a44"
+                                            CornerRadius="6" Margin="0,4,0,0" BorderBrush="#5a5278" BorderThickness="1">
+                                        <Border.RenderTransform>
+                                            <TranslateTransform x:Name="QuickModeDrawerTranslate"/>
+                                        </Border.RenderTransform>
+                                        <StackPanel x:Name="QuickModeDrawerPanel" Margin="4">
+                                            <Button Style="{StaticResource drawerModeItem}" Content="头歌模式"
+                                                    Click="QuickModeItem_Touge_Click"/>
+                                            <Button Style="{StaticResource drawerModeItem}" Content="VSCode"
+                                                    Click="QuickModeItem_VSCode_Click"/>
+                                            <Button Style="{StaticResource drawerModeItem}" Content="自定义编辑器模式"
+                                                    Click="QuickModeItem_Custom_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!--全控制缩进 开关（标签随模式切换）-->
+                                    <Grid Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding FullControlLabel}" Style="{StaticResource settingsLabel}"
+                                                   VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0"
+                                                   DataContext="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext}"/>
+                                        <ToggleButton x:Name="FullControlIndentToggle" Grid.Column="1"
+                                                      Style="{StaticResource onOffToggle}"
+                                                      Checked="FullControlIndentToggle_Changed"
+                                                      Unchecked="FullControlIndentToggle_Changed"/>
+                                    </Grid>
+
+                                    <!--左右符号对称检测 开关（标签随模式切换）-->
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding SymbolDetectLabel}" Style="{StaticResource settingsLabel}"
+                                                   VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0"
+                                                   DataContext="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext}"/>
+                                        <ToggleButton x:Name="SymbolSymmetryToggle" Grid.Column="1"
+                                                      Style="{StaticResource onOffToggle}"
+                                                      Checked="SymbolSymmetryToggle_Changed"
+                                                      Unchecked="SymbolSymmetryToggle_Changed"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
                             <CheckBox x:Name="EnableHotkeyCheckBox" Content="启用快捷键"
                                       Style="{StaticResource settingsCheckBox}"
                                       IsChecked="False"
+                                      Margin="0,12,0,0"
                                       Checked="EnableHotkeyCheckBox_Changed"
                                       Unchecked="EnableHotkeyCheckBox_Changed">
                                 <CheckBox.ToolTip>
